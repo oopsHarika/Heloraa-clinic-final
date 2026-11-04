@@ -1,10 +1,13 @@
+
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/LogoutButton";
+import ProfileMenu from "@/components/ProfileMenu";
 
 export default async function PatientPage() {
   const supabase = await createClient();
 
+  // 1. Authenticate the user
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -13,68 +16,82 @@ export default async function PatientPage() {
     return null;
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  // 2. Fetch profile and patient record simultaneously
+  const [
+    { data: profile },
+    {
+      data: patient,
+      error: patientError,
+    },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single(),
 
-  
-  const {
-    data: patient,
-    error: patientError,
-  } = await supabase
-    .from("patients")
-    .select("id, profile_id, date_of_birth, gender, blood_group")
-    .eq("profile_id", user.id)
-    .maybeSingle();
+    supabase
+      .from("patients")
+      .select("id, profile_id, date_of_birth, gender, blood_group")
+      .eq("profile_id", user.id)
+      .maybeSingle(),
+  ]);
 
   if (patientError) {
     console.error("Patient query failed:", patientError);
   }
 
-console.log("Logged-in user ID:", user.id);
-console.log("Patient record:", patient);
-console.log("Patient query error:", patientError);
+  // 3. Fetch dashboard data simultaneously
+  const [
+    { data: appointments },
+    { data: records },
+    { data: medications },
+    { data: notifications },
+  ] = await Promise.all([
+    patient
+      ? supabase
+          .from("appointments")
+          .select(`
+            *,
+            doctors (
+              specialization,
+              profile_id
+            )
+          `)
+          .eq("patient_id", patient.id)
+          .order("appointment_date", { ascending: true })
+      : Promise.resolve({ data: [] }),
 
+    patient
+      ? supabase
+          .from("medical_records")
+          .select("*")
+          .eq("patient_id", patient.id)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] }),
 
-  const { data: appointments } = await supabase
-    .from("appointments")
-    .select(`
-      *,
-      doctors (
-        specialization,
-        profile_id
-      )
-    `)
-    .eq("patient_id", patient?.id)
-    .order("appointment_date", { ascending: true });
+    patient
+      ? supabase
+          .from("medications")
+          .select("*")
+          .eq("patient_id", patient.id)
+          .eq("active", true)
+      : Promise.resolve({ data: [] }),
 
-  const { data: records } = await supabase
-    .from("medical_records")
-    .select("*")
-    .eq("patient_id", patient?.id)
-    .order("created_at", { ascending: false });
-
-  const { data: medications } = await supabase
-    .from("medications")
-    .select("*")
-    .eq("patient_id", patient?.id)
-    .eq("active", true);
-
-  const { data: notifications } = await supabase
-    .from("notifications")
-    .select(`
-      id,
-      title,
-      message,
-      type,
-      read,
-      created_at
-    `)
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(5);
+    supabase
+      .from("notifications")
+      .select(`
+        id,
+        title,
+        message,
+        type,
+        read,
+        created_at
+      `)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(5),
+  ]);
 
   const unreadNotifications =
     notifications?.filter((notification) => !notification.read).length || 0;
@@ -239,11 +256,10 @@ console.log("Patient query error:", patientError);
                   )}
                 </Link>
 
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0A0D14] text-xs font-semibold text-white">
-                  {(profile?.full_name || "P")
-                    .charAt(0)
-                    .toUpperCase()}
-                </div>
+                <ProfileMenu
+                  name={profile?.full_name}
+                  canEdit={true}
+                />
 
               </div>
 

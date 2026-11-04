@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import LogoutButton from "@/components/LogoutButton";
+import ProfileMenu from "@/components/ProfileMenu";
 
 type AdminFlag = { id: string; description?: string | null; message?: string | null; flag_type?: string | null; type?: string | null; status?: string | null };
 type AdminProfileRelation = { full_name?: string | null } | { full_name?: string | null }[] | null;
@@ -23,8 +24,20 @@ export default async function AdminDashboard() {
     return null;
   }
 
+ 
   // =========================================================
-  // DASHBOARD COUNTS
+  // DASHBOARD COUNTS + TODAY
+  // =========================================================
+
+  const today = new Date().toISOString().split("T")[0];
+
+  // Create the admin client only when the server key exists.
+  const adminSupabase = process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? createAdminClient()
+    : null;
+
+  // =========================================================
+  // ALL DASHBOARD QUERIES (PARALLEL)
   // =========================================================
 
   const [
@@ -32,6 +45,10 @@ export default async function AdminDashboard() {
     { count: doctorCount },
     { count: appointmentCount },
     { count: aiInteractionCount },
+    { data: appointments },
+    { data: aiInteractions },
+    { data: rawAiFlags },
+    automationResult,
   ] = await Promise.all([
     supabase
       .from("patients")
@@ -48,74 +65,66 @@ export default async function AdminDashboard() {
     supabase
       .from("ai_interactions")
       .select("*", { count: "exact", head: true }),
+
+    supabase
+      .from("appointments")
+      .select(`
+        id,
+        appointment_date,
+        appointment_time,
+        appointment_type,
+        status,
+        reason,
+        patients (
+          profile_id,
+          profiles (
+            full_name
+          )
+        ),
+        doctors (
+          profile_id,
+          profiles (
+            full_name
+          ),
+          specialization
+        )
+      `)
+      .gte("appointment_date", today)
+      .order("appointment_date", { ascending: true })
+      .order("appointment_time", { ascending: true })
+      .limit(6),
+
+    supabase
+      .from("ai_interactions")
+      .select(`
+        id,
+        agent_name,
+        input_text,
+        output_text,
+        created_at,
+        metadata
+      `)
+      .order("created_at", { ascending: false })
+      .limit(8),
+
+    supabase
+      .from("ai_flags")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(20),
+
+    adminSupabase
+      ? adminSupabase
+          .from("automation_logs")
+          .select("*")
+          .limit(8)
+      : Promise.resolve(null),
   ]);
 
   // =========================================================
-  // TODAY
+  // REMOVE DUPLICATE AI FLAGS
   // =========================================================
 
-  const today = new Date().toISOString().split("T")[0];
-
-  // =========================================================
-  // UPCOMING APPOINTMENTS
-  // =========================================================
-
-  const { data: appointments } = await supabase
-    .from("appointments")
-    .select(`
-      id,
-      appointment_date,
-      appointment_time,
-      appointment_type,
-      status,
-      reason,
-      patients (
-        profile_id,
-        profiles (
-          full_name
-        )
-      ),
-      doctors (
-        profile_id,
-        profiles (
-          full_name
-        ),
-        specialization
-      )
-    `)
-    .gte("appointment_date", today)
-    .order("appointment_date", { ascending: true })
-    .order("appointment_time", { ascending: true })
-    .limit(6);
-
-  // =========================================================
-  // AI AGENT ACTIVITY
-  // =========================================================
-
-  const { data: aiInteractions } = await supabase
-    .from("ai_interactions")
-    .select(`
-      id,
-      agent_name,
-      input_text,
-      output_text,
-      created_at,
-      metadata
-    `)
-    .order("created_at", { ascending: false })
-    .limit(8);
-
-  // =========================================================
-  // AI FLAGS
-  // =========================================================
-
-  const { data: rawAiFlags } = await supabase
-    .from("ai_flags")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  // Remove duplicate AI flags
   const uniqueFlags: AdminFlag[] = [];
   const seenFlags = new Set<string>();
 
@@ -145,27 +154,12 @@ export default async function AdminDashboard() {
   // =========================================================
   // AUTOMATION LOGS
   // =========================================================
-  //
-  // IMPORTANT:
-  // automation_logs does NOT have created_at.
-  // Therefore we do NOT order by created_at here.
-  //
-  // We use the service-role client because these logs are
-  // written by server-side n8n automation.
-  // =========================================================
 
   let automationLogs: AutomationLog[] = [];
 
-  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    const adminSupabase = createAdminClient();
-
-    const {
-      data: automationData,
-      error: automationError,
-    } = await adminSupabase
-      .from("automation_logs")
-      .select("*")
-      .limit(8);
+  if (automationResult) {
+    const { data: automationData, error: automationError } =
+      automationResult;
 
     if (automationError) {
       console.error(
@@ -176,6 +170,7 @@ export default async function AdminDashboard() {
       automationLogs = (automationData || []) as AutomationLog[];
     }
   }
+
 
   // =========================================================
   // HELPERS
@@ -244,7 +239,10 @@ export default async function AdminDashboard() {
             </p>
           </div>
 
-          <LogoutButton />
+          <ProfileMenu
+            name={user.user_metadata?.full_name}
+            canEdit={false}
+          />
 
         </div>
 

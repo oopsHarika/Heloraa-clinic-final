@@ -1,25 +1,24 @@
+
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { generateWithOpenRouter } from "@/lib/ai/provider";
+import { createCommunicationNotification } from "@/lib/notifications/communication";
 
 export async function POST(request: Request) {
   try {
+    // 1. Verify n8n authorization
     const expectedToken = process.env.AUTOMATION_SECRET;
-    if (!expectedToken || request.headers.get("authorization") !== `Bearer ${expectedToken}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authHeader = request.headers.get("authorization");
 
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    if (
+      !expectedToken ||
+      authHeader !== `Bearer ${expectedToken}`
+    ) {
       return NextResponse.json(
-        {
-          error: "Supabase server configuration is missing.",
-        },
-        { status: 500 }
+        { error: "Unauthorized" },
+        { status: 401 }
       );
     }
 
-    const supabase = createAdminClient();
-
+    // 2. Validate request
     const body = await request.json();
 
     const {
@@ -29,155 +28,62 @@ export async function POST(request: Request) {
       appointmentId,
     } = body;
 
-    if (!recipientUserId) {
+    if (
+      typeof recipientUserId !== "string" ||
+      !recipientUserId.trim()
+    ) {
       return NextResponse.json(
-        {
-          error: "recipientUserId is required.",
-        },
+        { error: "recipientUserId is required." },
         { status: 400 }
       );
     }
 
-    if (!context) {
+    if (
+      typeof context !== "string" ||
+      !context.trim()
+    ) {
       return NextResponse.json(
-        {
-          error: "context is required.",
-        },
+        { error: "context is required." },
         { status: 400 }
       );
     }
 
-    // Find recipient
-    const { data: recipient, error: recipientError } =
-      await supabase
-        .from("profiles")
-        .select("id, full_name, email, role")
-        .eq("id", recipientUserId)
-        .single();
-
-    if (recipientError || !recipient) {
+    if (typeof type !== "string" || !type.trim()) {
       return NextResponse.json(
-        {
-          error: "Recipient profile not found.",
-          details: recipientError?.message,
-        },
-        { status: 404 }
+        { error: "A valid notification type is required." },
+        { status: 400 }
       );
     }
 
-    // Generate notification using free Groq LLM
-    const message = await generateWithOpenRouter({
-      systemInstruction: `
-You are the Communication Agent for Heloraa Clinic.
+    if (
+      appointmentId !== undefined &&
+      (typeof appointmentId !== "string" ||
+        !appointmentId.trim())
+    ) {
+      return NextResponse.json(
+        { error: "appointmentId must be a non-empty string." },
+        { status: 400 }
+      );
+    }
 
-Create a short, professional healthcare notification.
-
-Rules:
-- Be concise.
-- Be calm and professional.
-- Do not diagnose.
-- Do not provide treatment advice.
-- Do not invent information.
-- Use only the supplied context.
-- Return ONLY the notification message.
-      `,
-      prompt: `
-Recipient: ${recipient.full_name}
-Communication type: ${type}
-Context: ${context}
-      `,
-      temperature: 0.2,
-      maxOutputTokens: 250,
+    // 3. Generate and save notification using shared helper
+    const result = await createCommunicationNotification({
+      recipientUserId: recipientUserId.trim(),
+      type: type.trim(),
+      context: context.trim(),
+      appointmentId,
+      source: "n8n_automation",
     });
 
-    if (!message) {
-      return NextResponse.json(
-        {
-          error: "AI did not generate a message.",
-        },
-        { status: 500 }
-      );
-    }
-
-    // Create notification
-    const {
-      data: notification,
-      error: notificationError,
-    } = await supabase
-      .from("notifications")
-      .insert({
-        user_id: recipient.id,
-        title: getNotificationTitle(type),
-        message,
-        type,
-        read: false,
-        metadata: {
-          generated_by: "communication_agent",
-          source: "n8n_automation",
-          appointment_id: appointmentId || null,
-        },
-      })
-      .select()
-      .single();
-
-    if (notificationError) {
-      console.error(
-        "NOTIFICATION INSERT ERROR:",
-        notificationError
-      );
-
-      return NextResponse.json(
-        {
-          error: "Notification could not be created.",
-          details: notificationError.message,
-        },
-        { status: 500 }
-      );
-    }
-
-    // Log AI interaction
-    const { error: interactionError } =
-      await supabase
-        .from("ai_interactions")
-        .insert({
-          user_id: recipient.id,
-          patient_id: null,
-          agent_name: "communication",
-          input_text: JSON.stringify({
-            recipientUserId,
-            type,
-            context,
-            appointmentId,
-          }),
-          output_text: message,
-          metadata: {
-            model:
-              process.env.GROQ_MODEL ||
-              "openai/gpt-oss-20b",
-            provider: "groq",
-            rag: false,
-            source: "n8n_automation",
-            notification_id: notification.id,
-          },
-        });
-
-    if (interactionError) {
-      console.warn(
-        "AI interaction logging failed:",
-        interactionError.message
-      );
-    }
-
+    // 4. Return result
     return NextResponse.json({
       success: true,
-      message,
-      notification,
+      duplicate: result.duplicate,
+      message: result.message ?? "Notification already exists.",
+      notification: result.notification,
     });
   } catch (error) {
-    console.error(
-      "AUTOMATION COMMUNICATION ERROR:",
-      error
-    );
+    console.error("AUTOMATION COMMUNICATION ERROR:", error);
 
     return NextResponse.json(
       {
@@ -188,27 +94,5 @@ Context: ${context}
       },
       { status: 500 }
     );
-  }
-}
-
-function getNotificationTitle(type: string) {
-  switch (type) {
-    case "appointment_reminder":
-      return "Appointment Reminder";
-
-    case "appointment_confirmation":
-      return "Appointment Confirmed";
-
-    case "follow_up":
-      return "Follow-up Reminder";
-
-    case "report_ready":
-      return "Report Available";
-
-    case "doctor_message":
-      return "Message from Doctor";
-
-    default:
-      return "Heloraa Clinic";
   }
 }

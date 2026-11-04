@@ -122,57 +122,71 @@ export default function LoginPage() {
     <main className="page-shell min-h-screen bg-[#F8FAFC] px-4 py-10">
       <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center">
         <div className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl lg:grid-cols-2">
+          
           {/* LEFT SIDE */}
-          <div className="hidden bg-[#0A0D14] p-10 text-white lg:flex lg:flex-col lg:justify-between">
-            <div>
+          <div className="login-brand-panel relative hidden overflow-hidden bg-gradient-to-br from-[#123F38] via-[#176B5B] to-[#0D5148] p-10 !text-white lg:flex lg:flex-col lg:justify-between">
+            {/* Decorative background elements */}
+            <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-emerald-300/10 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-24 -left-20 h-72 w-72 rounded-full bg-teal-200/10 blur-3xl" />
+
+            <div className="relative z-10">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white font-bold text-[#0A0D14]">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white !text-[#15594D] text-lg font-bold shadow-lg">
                   H
                 </div>
 
                 <div>
-                  <p className="font-semibold">Heloraa Clinic</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="!text-white text-lg font-semibold">
+                    Heloraa Clinic
+                  </p>
+                  <p className="!text-emerald-100 text-sm">
                     Connected healthcare
                   </p>
                 </div>
               </div>
 
               <div className="mt-16">
-                <p className="text-sm font-medium text-slate-400">
-                  Welcome to Heloraa
+                <p className="!text-emerald-200 text-sm font-semibold tracking-wide">
+                  WELCOME TO HELORAA
                 </p>
 
-                <h1 className="mt-3 text-4xl font-semibold leading-tight">
+                <h1 className="mt-4 !text-white text-4xl font-bold leading-tight tracking-tight">
                   Healthcare,
                   <br />
                   connected intelligently.
                 </h1>
 
-                <p className="mt-6 max-w-md leading-7 text-slate-400">
+                <p className="mt-6 max-w-md !text-emerald-50/90 text-base leading-8">
                   Manage appointments, medical records, medications and
                   AI-assisted healthcare insights from one secure platform.
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="font-semibold">AI</p>
-                <p className="mt-1 text-xs text-slate-400">Assisted care</p>
+            <div className="relative z-10 grid grid-cols-3 gap-3">
+              <div className="login-feature-card rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+                <p className="!text-white text-lg font-bold">AI</p>
+                <p className="mt-2 !text-emerald-100 text-xs">
+                  Assisted care
+                </p>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="font-semibold">RAG</p>
-                <p className="mt-1 text-xs text-slate-400">Medical context</p>
+              <div className="login-feature-card rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+                <p className="!text-white text-lg font-bold">RAG</p>
+                <p className="mt-2 !text-emerald-100 text-xs">
+                  Medical context
+                </p>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="font-semibold">Secure</p>
-                <p className="mt-1 text-xs text-slate-400">Patient data</p>
+              <div className="login-feature-card rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+                <p className="!text-white text-lg font-bold">Secure</p>
+                <p className="mt-2 !text-emerald-100 text-xs">
+                  Patient data
+                </p>
               </div>
             </div>
           </div>
+
 
           {/* RIGHT SIDE */}
           <div className="flex items-center p-8 sm:p-12">

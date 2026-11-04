@@ -1,6 +1,8 @@
+
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
+import { createCommunicationNotification } from "@/lib/notifications/communication";
 
 // ============================================================
 // GET — Used by n8n to retrieve tomorrow's appointments
@@ -8,9 +10,7 @@ import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   try {
-    // --------------------------------------------------------
-    // 1. Verify n8n automation authorization
-    // --------------------------------------------------------
+    // 1. Verify n8n authorization
 
     const authHeader = request.headers.get("authorization");
     const expectedToken = process.env.AUTOMATION_SECRET;
@@ -25,17 +25,11 @@ export async function GET(request: Request) {
       );
     }
 
-    // --------------------------------------------------------
     // 2. Use admin client
-    // --------------------------------------------------------
-    // n8n does not have a Supabase login session, so we use
-    // the service-role client for this server-to-server call.
 
     const supabase = createAdminClient();
 
-    // --------------------------------------------------------
-    // 3. Calculate tomorrow's date
-    // --------------------------------------------------------
+    // 3. Calculate tomorrow's date in India
 
     const now = new Date();
 
@@ -89,9 +83,7 @@ export async function GET(request: Request) {
 
     const tomorrow = `${tomorrowYear}-${tomorrowMonth}-${tomorrowDay}`;
 
-    // --------------------------------------------------------
     // 4. Get tomorrow's scheduled appointments
-    // --------------------------------------------------------
 
     const { data: appointments, error } = await supabase
       .from("appointments")
@@ -136,16 +128,12 @@ export async function GET(request: Request) {
       );
 
       return NextResponse.json(
-        {
-          error: error.message,
-        },
+        { error: error.message },
         { status: 500 }
       );
     }
 
-    // --------------------------------------------------------
-    // 5. Return data to n8n
-    // --------------------------------------------------------
+    // 5. Return appointments to n8n
 
     return NextResponse.json({
       success: true,
@@ -153,6 +141,7 @@ export async function GET(request: Request) {
       count: appointments?.length || 0,
       appointments: appointments || [],
     });
+
   } catch (error) {
     console.error(
       "GET AUTOMATION APPOINTMENTS ERROR:",
@@ -180,9 +169,7 @@ export async function POST(request: Request) {
   try {
     const supabase = await createClient();
 
-    // --------------------------------------------------
     // 1. Get logged-in user
-    // --------------------------------------------------
 
     const {
       data: { user },
@@ -191,16 +178,13 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json(
         {
-          error:
-            "You must be logged in to book an appointment.",
+          error: "You must be logged in to book an appointment.",
         },
         { status: 401 }
       );
     }
 
-    // --------------------------------------------------
     // 2. Read request body
-    // --------------------------------------------------
 
     const body = await request.json();
 
@@ -226,9 +210,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // --------------------------------------------------
     // 3. Get patient profile
-    // --------------------------------------------------
 
     const { data: patient, error: patientError } =
       await supabase
@@ -238,22 +220,15 @@ export async function POST(request: Request) {
         .single();
 
     if (patientError || !patient) {
-      console.error(
-        "PATIENT ERROR:",
-        patientError
-      );
+      console.error("PATIENT ERROR:", patientError);
 
       return NextResponse.json(
-        {
-          error: "Patient profile not found.",
-        },
+        { error: "Patient profile not found." },
         { status: 404 }
       );
     }
 
-    // --------------------------------------------------
     // 4. Verify doctor exists
-    // --------------------------------------------------
 
     const { data: doctor, error: doctorError } =
       await supabase
@@ -269,23 +244,17 @@ export async function POST(request: Request) {
         .single();
 
     if (doctorError || !doctor) {
-      console.error(
-        "DOCTOR ERROR:",
-        doctorError
-      );
+      console.error("DOCTOR ERROR:", doctorError);
 
       return NextResponse.json(
         {
-          error:
-            "Selected doctor could not be found.",
+          error: "Selected doctor could not be found.",
         },
         { status: 404 }
       );
     }
 
-    // --------------------------------------------------
-    // 5. Check duplicate appointment
-    // --------------------------------------------------
+    // 5. Check duplicate appointment slot
 
     const {
       data: existingAppointment,
@@ -306,9 +275,7 @@ export async function POST(request: Request) {
       );
 
       return NextResponse.json(
-        {
-          error: existingError.message,
-        },
+        { error: existingError.message },
         { status: 500 }
       );
     }
@@ -323,9 +290,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // --------------------------------------------------
     // 6. Create appointment
-    // --------------------------------------------------
 
     const {
       data: appointment,
@@ -353,26 +318,38 @@ export async function POST(request: Request) {
       );
 
       return NextResponse.json(
-        {
-          error: appointmentError.message,
-        },
+        { error: appointmentError.message },
         { status: 500 }
       );
     }
 
-    // --------------------------------------------------
-    // 7. Return confirmation
-    // --------------------------------------------------
+    // 7. Get doctor name
 
-    const doctorProfile = Array.isArray(
-      doctor.profiles
-    )
+    const doctorProfile = Array.isArray(doctor.profiles)
       ? doctor.profiles[0]
       : doctor.profiles;
 
     const doctorName =
-      doctorProfile?.full_name ||
-      "Selected doctor";
+      doctorProfile?.full_name || "Selected doctor";
+
+    // 8. Create appointment confirmation notification
+
+    try {
+      await createCommunicationNotification({
+        recipientUserId: user.id,
+        type: "appointment_confirmation",
+        appointmentId: appointment.id,
+        source: "appointment_booking",
+        context: `Your appointment with ${doctorName} has been booked for ${appointmentDate} at ${appointmentTime}.`,
+      });
+    } catch (notificationError) {
+      console.error(
+        "BOOKING NOTIFICATION ERROR:",
+        notificationError
+      );
+    }
+
+    // 9. Return successful booking response
 
     return NextResponse.json(
       {
@@ -382,6 +359,7 @@ export async function POST(request: Request) {
       },
       { status: 201 }
     );
+
   } catch (error) {
     console.error(
       "APPOINTMENT API ERROR:",

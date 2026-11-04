@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { createCommunicationNotification } from "@/lib/notifications/communication";
+import RescheduleAppointment from "@/components/RescheduleAppointment";
 
 type Appointment = {
   id: string;
@@ -67,10 +69,6 @@ function getSpecialization(appointment: Appointment) {
   return appointment.doctors?.[0]?.specialization || "General Medicine";
 }
 
-/* -------------------------------------------------------
-   CANCEL APPOINTMENT
-------------------------------------------------------- */
-
 async function cancelAppointment(formData: FormData) {
   "use server";
 
@@ -102,19 +100,72 @@ async function cancelAppointment(formData: FormData) {
     return;
   }
 
-  // Cancel ONLY this patient's scheduled/confirmed appointment
-  const { error } = await supabase
+  // Fetch appointment and doctor details before cancellation
+  const { data: appointment, error: fetchError } = await supabase
+    .from("appointments")
+    .select(`
+      id,
+      appointment_date,
+      appointment_time,
+      doctors (
+        profiles (
+          id,
+          full_name
+        )
+      )
+    `)
+    .eq("id", appointmentId)
+    .eq("patient_id", patient.id)
+    .in("status", ["scheduled", "confirmed"])
+    .maybeSingle();
+
+  if (fetchError || !appointment) {
+    console.error("Appointment lookup failed:", fetchError);
+    return;
+  }
+
+  // Cancel the appointment
+  const { data: cancelledAppointment, error } = await supabase
     .from("appointments")
     .update({
       status: "cancelled",
     })
     .eq("id", appointmentId)
     .eq("patient_id", patient.id)
-    .in("status", ["scheduled", "confirmed"]);
+    .in("status", ["scheduled", "confirmed"])
+    .select("id")
+    .maybeSingle();
 
-  if (error) {
+  if (error || !cancelledAppointment) {
     console.error("Cancel appointment error:", error);
     return;
+  }
+
+  // Identify the doctor
+  const doctor = Array.isArray(appointment.doctors)
+    ? appointment.doctors[0]
+    : appointment.doctors;
+
+  const doctorProfile = Array.isArray(doctor?.profiles)
+    ? doctor.profiles[0]
+    : doctor?.profiles;
+
+  // Notify the doctor through the Communication Agent
+  if (doctorProfile?.id) {
+    try {
+      await createCommunicationNotification({
+        recipientUserId: doctorProfile.id,
+        type: "appointment_cancellation",
+        appointmentId: appointment.id,
+        source: "appointment_cancellation",
+        context: `The patient has cancelled their appointment scheduled for ${appointment.appointment_date} at ${appointment.appointment_time}.`,
+      });
+    } catch (notificationError) {
+      console.error(
+        "CANCELLATION NOTIFICATION ERROR:",
+        notificationError
+      );
+    }
   }
 
   // Refresh the appointments page
@@ -513,25 +564,37 @@ function AppointmentCard({
         </div>
       )}
 
-      {/* Cancel Button */}
-      {canCancel && (
-        <div className="mt-5 flex justify-end border-t border-slate-100 pt-4">
-          <form action={cancelAppointment}>
-            <input
-              type="hidden"
-              name="appointment_id"
-              value={appointment.id}
-            />
+      {/* Appointment Actions */}
+{canCancel && (
+  <div className="mt-5 flex flex-col gap-4 border-t border-slate-100 pt-4">
 
-            <button
-              type="submit"
-              className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100"
-            >
-              Cancel Appointment
-            </button>
-          </form>
-        </div>
-      )}
+    {/* Reschedule */}
+    <RescheduleAppointment
+      appointmentId={appointment.id}
+      currentDate={appointment.appointment_date}
+      currentTime={appointment.appointment_time}
+    />
+
+    {/* Cancel */}
+    <div className="flex justify-end">
+      <form action={cancelAppointment}>
+        <input
+          type="hidden"
+          name="appointment_id"
+          value={appointment.id}
+        />
+
+        <button
+          type="submit"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100"
+        >
+          Cancel Appointment
+        </button>
+      </form>
+    </div>
+
+  </div>
+)}
 
     </div>
   );

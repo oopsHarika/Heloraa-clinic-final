@@ -521,3 +521,21 @@ main button:focus-visible, main a:focus-visible, main input:focus-visible, main 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+/* Login page feature-card text visibility fix */
+main .login-brand-panel .login-feature-title {
+  color: #ffffff !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+main .login-brand-panel .login-feature-description {
+  color: #d1fae5 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+main .login-brand-panel .login-feature-card {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  box-shadow: none !important;
+}

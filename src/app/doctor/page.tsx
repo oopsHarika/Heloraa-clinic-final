@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import LogoutButton from "@/components/LogoutButton";
+import ProfileMenu from "@/components/ProfileMenu";
 
 export default async function DoctorPage() {
   // =====================================================
@@ -27,58 +28,61 @@ export default async function DoctorPage() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Supabase server configuration is missing.");
   const adminSupabase = createAdminClient();
 
+  
   // =====================================================
-  // DOCTOR
-  // =====================================================
-
-  const { data: doctor } = await adminSupabase
-    .from("doctors")
-    .select("*")
-    .eq("profile_id", user.id)
-    .single();
-
-  // =====================================================
-  // PROFILE
+  // DOCTOR + PROFILE (PARALLEL)
   // =====================================================
 
-  const { data: profile } = await adminSupabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  const [doctorResult, profileResult] = await Promise.all([
+    adminSupabase
+      .from("doctors")
+      .select("*")
+      .eq("profile_id", user.id)
+      .single(),
+
+    adminSupabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single(),
+  ]);
+
+  const doctor = doctorResult.data;
+  const profile = profileResult.data;
 
   // =====================================================
-  // ASSIGNED PATIENTS
+  // ASSIGNED PATIENTS + APPOINTMENTS (PARALLEL)
   // =====================================================
 
-  const { data: patients } = await adminSupabase
-    .from("patients")
-    .select(`
-      *,
-      profiles (
-        full_name,
-        email,
-        phone
-      )
-    `)
-    .eq("assigned_doctor_id", doctor?.id);
+  const [patientsResult, appointmentsResult] = await Promise.all([
+    doctor
+      ? adminSupabase
+          .from("patients")
+          .select(`
+            *,
+            profiles (
+              full_name,
+              email,
+              phone
+            )
+          `)
+          .eq("assigned_doctor_id", doctor.id)
+      : Promise.resolve({ data: [] }),
 
-  // =====================================================
-  // APPOINTMENTS
-  // =====================================================
+    doctor
+      ? adminSupabase
+          .from("appointments")
+          .select("*")
+          .eq("doctor_id", doctor.id)
+          .order("appointment_date", { ascending: true })
+          .order("appointment_time", { ascending: true })
+      : Promise.resolve({ data: [] }),
+  ]);
 
-  const { data: rawAppointments } = await adminSupabase
-    .from("appointments")
-    .select("*")
-    .eq("doctor_id", doctor?.id)
-    .order("appointment_date", {
-      ascending: true,
-    })
-    .order("appointment_time", {
-      ascending: true,
-    });
+  const patients = patientsResult.data || [];
+  const rawAppointments = appointmentsResult.data || [];
 
-  let appointments = rawAppointments || [];
+  let appointments = rawAppointments;
 
   // =====================================================
   // ATTACH PATIENT NAMES TO APPOINTMENTS
@@ -106,10 +110,13 @@ export default async function DoctorPage() {
       ),
     ];
 
-    const { data: profileRows } = await adminSupabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", profileIds);
+    const { data: profileRows } =
+      profileIds.length > 0
+        ? await adminSupabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", profileIds)
+        : { data: [] };
 
     const profileMap = new Map(
       (profileRows || []).map((profile) => [
@@ -140,6 +147,7 @@ export default async function DoctorPage() {
         },
     }));
   }
+
 
   // =====================================================
   // DATE / STATS
@@ -293,11 +301,10 @@ export default async function DoctorPage() {
 
               </div>
 
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0A0D14] text-sm font-semibold text-white">
-                {profile?.full_name
-                  ?.charAt(0)
-                  .toUpperCase()}
-              </div>
+              <ProfileMenu
+                name={profile?.full_name}
+                canEdit={false}
+              />
 
             </div>
 
