@@ -1,8 +1,9 @@
+
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function proxy(request: NextRequest) {
-  const response = NextResponse.next({
+  let response = NextResponse.next({
     request,
   });
 
@@ -16,6 +17,14 @@ export async function proxy(request: NextRequest) {
         },
 
         setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value);
+          });
+
+          response = NextResponse.next({
+            request,
+          });
+
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options);
           });
@@ -26,7 +35,12 @@ export async function proxy(request: NextRequest) {
 
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+
+  if (error) {
+    console.error("Proxy authentication check failed:", error.message);
+  }
 
   const pathname = request.nextUrl.pathname;
 
@@ -36,7 +50,6 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith(route)
   );
 
-  // Not logged in → send to login
   if (isProtectedRoute && !user) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
@@ -47,19 +60,27 @@ export async function proxy(request: NextRequest) {
       : pathname.startsWith("/doctor")
         ? "doctor"
         : "admin";
-    const { data: profile } = await supabase
+
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
+
+    if (profileError) {
+      console.error("Proxy profile lookup failed:", profileError.message);
+    }
+
     if (profile?.role !== expectedRole) {
-      const destination = profile?.role === "patient"
-        ? "/patient"
-        : profile?.role === "doctor"
-          ? "/doctor"
-          : profile?.role === "admin"
-            ? "/admin"
-            : "/login";
+      const destination =
+        profile?.role === "patient"
+          ? "/patient"
+          : profile?.role === "doctor"
+            ? "/doctor"
+            : profile?.role === "admin"
+              ? "/admin"
+              : "/login";
+
       return NextResponse.redirect(new URL(destination, request.url));
     }
   }
