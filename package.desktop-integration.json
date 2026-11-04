@@ -1,0 +1,11 @@
+{
+  "main": "electron/main.cjs",
+  "scripts": {
+    "desktop": "electron .",
+    "desktop:dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.12"
+  }
+}

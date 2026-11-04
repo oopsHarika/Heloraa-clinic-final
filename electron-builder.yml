@@ -1,0 +1,22 @@
+appId: com.heloraa.clinic
+productName: Heloraa Clinic
+directories:
+  output: release
+files:
+  - electron/**/*
+  - package.json
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: HeloraaClinic-Setup-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Heloraa Clinic
+  uninstallDisplayName: Heloraa Clinic
+  deleteAppDataOnUninstall: false

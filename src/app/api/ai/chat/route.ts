@@ -187,23 +187,24 @@ export async function POST(request: Request) {
     // --------------------------------------------------
 
     let retrieved: Awaited<ReturnType<typeof retrieveMedicalContext>> = [];
-    let ragAvailable = false;
+let ragAvailable = false;
 
-    try {
-      await syncMedicalRecordEmbeddings(
-        supabase,
-        patient.id,
-        records || []
-      );
+try {
+  await syncMedicalRecordEmbeddings(
+    supabase,
+    patient.id,
+    records || []
+  );
 
-      retrieved =
-        await retrieveMedicalContext(
-          supabase,
-          patient.id,
-          message,
-          5
-        );
-    } catch (ragError) {
+  retrieved = await retrieveMedicalContext(
+    supabase,
+    patient.id,
+    message,
+    5
+  );
+
+  ragAvailable = true;
+} catch (ragError) {
       ragAvailable = false;
 
       console.error(

@@ -1,0 +1,63 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#123B5D">
+  <title>Heloraa Clinic - Offline</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+      background: #f3f7fb;
+      color: #123B5D;
+      text-align: center;
+    }
+
+    main {
+      max-width: 380px;
+      padding: 32px;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 10px 35px #123b5d12;
+    }
+
+    .symbol {
+      font-size: 52px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 13px 24px;
+      background: #123B5D;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="symbol">📶</div>
+    <h1>You're offline</h1>
+    <p>
+      Heloraa needs an internet connection to access
+      your live healthcare services.
+    </p>
+    <p>
+      Please reconnect to continue using your
+      appointments, medical records and AI assistant.
+    </p>
+    <button onclick="location.reload()">
+      Try again
+    </button>
+  </main>
+</body>
+</html>
